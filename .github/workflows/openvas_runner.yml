@@ -42,6 +42,9 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
+      - name: Check whoami
+        run: whoami
+
       - name: Start Next.js app in background
         run: |
           npm run start -- --port 3000 &
