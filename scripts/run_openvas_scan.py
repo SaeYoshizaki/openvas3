@@ -50,7 +50,7 @@ def main():
                 name=target_name,
                 hosts=SCAN_TARGETS,
                 port_list_id=port_list_id,
-                alive_test="6",
+                alive_test="none",
             )
             target_id = resp.get("id")
             print(f"[INFO] Created target id = {target_id}")
