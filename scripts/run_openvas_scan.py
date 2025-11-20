@@ -2,12 +2,13 @@ import os
 import sys
 import time
 
+from lxml import etree
 from gvm.connections import UnixSocketConnection
 from gvm.protocols.gmp import GMP
 from gvm.transforms import EtreeCheckCommandTransform
 
 
-# ===== 環境変数の読み込み =====
+# ===== 必須環境変数の読み込み =====
 def require_env(name: str) -> str:
     """必須環境変数を取得。なければエラー終了。"""
     value = os.environ.get(name)
@@ -20,11 +21,7 @@ def require_env(name: str) -> str:
 GMP_USER = require_env("GMP_USER")
 GMP_PASSWORD = require_env("GMP_PASSWORD")
 SCAN_TARGETS = require_env("SCAN_TARGETS").strip()
-
-# これは「Full and fast」など、使いたいスキャン設定の ID
 SCAN_CONFIG_ID = require_env("SCAN_CONFIG_ID")
-
-# デフォルトスキャナ（通常は Web UI で確認できる ID）
 SCANNER_ID = require_env("SCANNER_ID")
 
 # 任意設定（あれば上書き）
@@ -34,7 +31,6 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))
 TASK_NAME_PREFIX = os.environ.get("TASK_NAME_PREFIX", "GitHub Actions Scan")
 
 
-# ===== メイン処理 =====
 def main() -> None:
     print(f"[DEBUG] SCAN_TARGETS        = {SCAN_TARGETS!r}")
     print(f"[DEBUG] GMP_SOCKET_PATH     = {SOCKET_PATH!r}")
@@ -42,7 +38,6 @@ def main() -> None:
     print(f"[DEBUG] SCAN_CONFIG_ID      = {SCAN_CONFIG_ID!r}")
     print(f"[DEBUG] SCANNER_ID          = {SCANNER_ID!r}")
 
-    # ソケット接続 & Transform
     connection = UnixSocketConnection(path=SOCKET_PATH)
     transform = EtreeCheckCommandTransform()
 
@@ -55,7 +50,6 @@ def main() -> None:
         port_lists = gmp.get_port_lists(filter_string='name="OpenVAS Default"')
         port_list_ids = port_lists.xpath("port_list/@id")
         if not port_list_ids:
-            # 念のため全 port list を取得
             port_lists = gmp.get_port_lists()
             port_list_ids = port_lists.xpath("port_list/@id")
 
@@ -87,7 +81,8 @@ def main() -> None:
             target_id = resp.get("id")
             if not target_id:
                 print("[ERROR] Failed to create target (no id in response).")
-                print("[DEBUG] Raw response:", resp)
+                print("[DEBUG] Raw target response XML:")
+                print(etree.tostring(resp, pretty_print=True).decode("utf-8"))
                 sys.exit(1)
             print(f"[INFO] Created target id = {target_id}")
 
@@ -95,6 +90,7 @@ def main() -> None:
         config_id = SCAN_CONFIG_ID
         print(f"[INFO] Using scan config id = {config_id}")
 
+        # ---------- Task 作成 ----------
         task_name = f"{TASK_NAME_PREFIX} ({SCAN_TARGETS})"
         print(f"[INFO] Creating task: {task_name!r}")
 
@@ -107,20 +103,51 @@ def main() -> None:
         task_id = task_resp.get("id")
         if not task_id:
             print("[ERROR] Failed to create task (no id in response).")
-            print("[DEBUG] Raw response:", task_resp)
+            print("[DEBUG] Raw task response XML:")
+            print(etree.tostring(task_resp, pretty_print=True).decode("utf-8"))
             sys.exit(1)
         print(f"[INFO] Created task id = {task_id}")
 
+        # ---------- Task 起動 ----------
         start_resp = gmp.start_task(task_id)
-        report_ids = start_resp.xpath("report/@id")
+        print("[DEBUG] Raw start_task_response XML:")
+        print(etree.tostring(start_resp, pretty_print=True).decode("utf-8"))
+
+        # まずは start_task レスポンスから report id を探す
+        report_ids = start_resp.xpath(".//report/@id")
+
+        # もし見つからなければ、get_task から last_report をポーリングして拾う
         if not report_ids:
-            print("[ERROR] start_task did not return a report id.")
-            print("[DEBUG] Raw response:", start_resp)
-            sys.exit(1)
+            status = start_resp.get("status")
+            status_text = start_resp.get("status_text")
+            print(
+                f"[WARN] start_task response has no report id "
+                f"(status={status}, status_text={status_text})."
+            )
+            print("[INFO] Trying to get report id from get_task() ...")
+
+            # report が紐づくまで少し待つ
+            while True:
+                task = gmp.get_task(task_id=task_id)
+                status = task.xpath("task/status/text()")[0]
+                report_ids = task.xpath("task/last_report/report/@id")
+
+                if report_ids:
+                    break
+
+                print(f"[INFO] Waiting for report id to appear... status={status}")
+                if status in ("Stopped", "Interrupted"):
+                    print("[ERROR] Task stopped before report was created.")
+                    print("[DEBUG] Raw task XML:")
+                    print(etree.tostring(task, pretty_print=True).decode("utf-8"))
+                    sys.exit(1)
+
+                time.sleep(POLL_INTERVAL)
 
         report_id = report_ids[0]
         print(f"[INFO] Task started. Report id = {report_id}")
 
+        # ---------- 進捗ポーリング ----------
         while True:
             task = gmp.get_task(task_id=task_id)
             status = task.xpath("task/status/text()")[0]
@@ -142,7 +169,8 @@ def main() -> None:
         report_nodes = report.xpath("report")
         if not report_nodes or report_nodes[0].text is None:
             print("[ERROR] Report XML body is empty.")
-            print("[DEBUG] Raw response:", report)
+            print("[DEBUG] Raw report XML:")
+            print(etree.tostring(report, pretty_print=True).decode("utf-8"))
             sys.exit(1)
 
         xml_string = report_nodes[0].text
