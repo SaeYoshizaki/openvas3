@@ -112,7 +112,6 @@ def main() -> None:
             sys.exit(1)
         print(f"[INFO] Created task id = {task_id}")
 
-        # ---------- Task 実行 ----------
         start_resp = gmp.start_task(task_id)
         report_ids = start_resp.xpath("report/@id")
         if not report_ids:
