@@ -122,7 +122,6 @@ def main() -> None:
         report_id = report_ids[0]
         print(f"[INFO] Task started. Report id = {report_id}")
 
-        # ---------- 進捗ポーリング ----------
         while True:
             task = gmp.get_task(task_id=task_id)
             status = task.xpath("task/status/text()")[0]
