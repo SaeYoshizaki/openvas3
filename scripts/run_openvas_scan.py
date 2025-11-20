@@ -46,9 +46,11 @@ def main():
 
         if not target_id:
             print("[INFO] Target not found. Creating new target...")
+            clean_host = SCAN_TARGETS.strip()
+
             resp = gmp.create_target(
                 name=target_name,
-                hosts=SCAN_TARGETS,
+                hosts=f"{clean_host}/32",
                 port_list_id=port_list_id,
             )
             target_id = resp.get("id")
