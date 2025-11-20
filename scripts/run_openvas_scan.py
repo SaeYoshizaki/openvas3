@@ -1,10 +1,12 @@
 import os
 import time
+import sys
 
 from gvm.connections import UnixSocketConnection
 from gvm.protocols.gmp import GMP
 from gvm.transforms import EtreeCheckCommandTransform
 
+# ---- 環境変数 ----
 GMP_USER = os.environ["GMP_USER"]
 GMP_PASSWORD = os.environ["GMP_PASSWORD"]
 
@@ -14,6 +16,9 @@ SOCKET_PATH = os.environ.get("GMP_SOCKET_PATH", "/run/gvmd/gvmd.sock")
 REPORT_DIR = os.environ.get("REPORT_DIR", "openvas_reports")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))
 TASK_NAME_PREFIX = os.environ.get("TASK_NAME_PREFIX", "GitHub Actions Scan")
+
+# ここを追加: 環境変数から Scan Config ID を渡せるようにする
+SCAN_CONFIG_ID = os.environ.get("SCAN_CONFIG_ID")
 
 
 def main():
@@ -25,17 +30,25 @@ def main():
     transform = EtreeCheckCommandTransform()
 
     with GMP(connection=connection, transform=transform) as gmp:
+        # 認証
         gmp.authenticate(GMP_USER, GMP_PASSWORD)
         print("[INFO] Authenticated to GVM/GMP")
 
+        # ---- Port list ----
         port_lists = gmp.get_port_lists(filter_string='name="OpenVAS Default"')
         port_list_ids = port_lists.xpath("port_list/@id")
         if not port_list_ids:
             port_lists = gmp.get_port_lists()
             port_list_ids = port_lists.xpath("port_list/@id")
+
+        if not port_list_ids:
+            print("[ERROR] No port lists found in GVM. Aborting.")
+            sys.exit(1)
+
         port_list_id = port_list_ids[0]
         print(f"[INFO] Using port list id = {port_list_id}")
 
+        # ---- Target 作成/再利用 ----
         target_name = f"GA Target: {SCAN_TARGETS}"
         print(f"[INFO] Using target name = {target_name!r}")
 
@@ -48,9 +61,11 @@ def main():
             print("[INFO] Target not found. Creating new target...")
             clean_host = SCAN_TARGETS.strip()
 
+            # 以前の "Error in host specification" 対策:
+            # 127.0.0.1/32 ではなく、素直に "127.0.0.1" などを渡す
             resp = gmp.create_target(
                 name=target_name,
-                hosts="localhost",
+                hosts=clean_host,
                 port_list_id=port_list_id,
             )
             target_id = resp.get("id")
@@ -58,14 +73,31 @@ def main():
         else:
             print(f"[INFO] Reusing existing target id = {target_id}")
 
-        configs = gmp.get_scan_configs(filter_string='name="Full and fast"')
-        config_ids = configs.xpath("scan_config/@id")
-        if not config_ids:
-            configs = gmp.get_scan_configs()
+        # ---- Scan Config 選択 ----
+        if SCAN_CONFIG_ID:
+            # 環境変数から直接指定された ID を使う
+            config_id = SCAN_CONFIG_ID
+            print(f"[INFO] Using scan config id from env = {config_id}")
+        else:
+            # 名前で "Full and fast" を探す（見つからなければ全件取得）
+            configs = gmp.get_scan_configs(filter_string='name="Full and fast"')
             config_ids = configs.xpath("scan_config/@id")
-        config_id = config_ids[0]
-        print(f"[INFO] Using scan config id = {config_id}")
 
+            if not config_ids:
+                print('[WARN] "Full and fast" scan config not found. Fetching all scan configs...')
+                configs = gmp.get_scan_configs()
+                config_ids = configs.xpath("scan_config/@id")
+
+            if not config_ids:
+                print("[ERROR] No scan configs found in GVM.")
+                print("       → Web UI から使いたいスキャン設定の ID を確認して、")
+                print("         環境変数 SCAN_CONFIG_ID にセットしてから再実行してね。")
+                sys.exit(1)
+
+            config_id = config_ids[0]
+            print(f"[INFO] Using scan config id = {config_id}")
+
+        # ---- Task 作成 & 実行 ----
         task_name = f"{TASK_NAME_PREFIX} ({SCAN_TARGETS})"
         print(f"[INFO] Creating task: {task_name!r}")
 
@@ -81,6 +113,7 @@ def main():
         report_id = start_resp.xpath("report/@id")[0]
         print(f"[INFO] Task started. Report id = {report_id}")
 
+        # ---- 進捗ポーリング ----
         while True:
             task = gmp.get_task(task_id=task_id)
             status = task.xpath("task/status/text()")[0]
@@ -90,11 +123,12 @@ def main():
                 break
             time.sleep(POLL_INTERVAL)
 
+        # ---- レポート取得 ----
         print("[INFO] Fetching report XML...")
         report = gmp.get_report(
             report_id=report_id,
             details=True,
-            report_format_id="c1645568-627a-11e3-a660-406186ea4fc5",
+            report_format_id="c1645568-627a-11e3-a660-406186ea4fc5",  # XML レポート
         )
         xml_string = report.xpath("report")[0].text
 
