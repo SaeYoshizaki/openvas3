@@ -3,7 +3,7 @@ name: OpenVAS Scan
 on:
   push:
     branches:
-      - main 
+      - main
   workflow_dispatch:
 
 jobs:
@@ -13,9 +13,11 @@ jobs:
     env:
       GMP_USER: ${{ secrets.GMP_USER }}
       GMP_PASSWORD: ${{ secrets.GMP_PASSWORD }}
-      SCAN_TARGETS: "127.0.0.1/32"
+      SCAN_TARGETS: "127.0.0.1"
       GMP_SOCKET_PATH: "/run/gvmd/gvmd.sock"
       REPORT_DIR: "openvas_reports"
+      POLL_INTERVAL: "10"
+      TASK_NAME_PREFIX: "GitHub Actions Scan"
 
     steps:
       - name: Checkout repo
@@ -52,27 +54,18 @@ jobs:
             sleep 2
           done
 
+      - name: Ensure GVM is running (check gvmd socket)
+        run: |
+          if [ ! -S "$GMP_SOCKET_PATH" ]; then
+            echo "ERROR: GVM socket $GMP_SOCKET_PATH not found."
+            exit 1
+          fi
+          echo "gvmd socket is ready at $GMP_SOCKET_PATH"
+
       - name: Install OpenVAS Python deps
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gvm python3-lxml
-
-      # ★ここを追加
-      - name: Ensure GVM is running
-        run: |
-          if [ ! -S /run/gvmd/gvmd.sock ]; then
-            echo "Starting GVM..."
-            sudo gvm-start || true
-          fi
-
-          for i in {1..30}; do
-            if [ -S /run/gvmd/gvmd.sock ]; then
-              echo "gvmd socket is ready."
-              break
-            fi
-            echo "Waiting for /run/gvmd/gvmd.sock ..."
-            sleep 2
-          done
 
       - name: Run OpenVAS scan
         run: |
