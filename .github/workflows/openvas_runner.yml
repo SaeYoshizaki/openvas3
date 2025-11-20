@@ -18,6 +18,7 @@ jobs:
       REPORT_DIR: "openvas_reports"
       POLL_INTERVAL: "10"
       TASK_NAME_PREFIX: "GitHub Actions Scan"
+      SCAN_CONFIG_ID: ${{ secrets.SCAN_CONFIG_ID }}
 
     steps:
       - name: Checkout repo
