@@ -95,7 +95,6 @@ def main() -> None:
         config_id = SCAN_CONFIG_ID
         print(f"[INFO] Using scan config id = {config_id}")
 
-        # ---------- Task 作成 ----------
         task_name = f"{TASK_NAME_PREFIX} ({SCAN_TARGETS})"
         print(f"[INFO] Creating task: {task_name!r}")
 
