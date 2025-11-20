@@ -43,7 +43,15 @@ jobs:
         run: npm run build
 
       - name: Check whoami
-        run: whoami
+        run: |
+          echo "=== whoami ==="
+          whoami
+          echo
+          echo "=== id ==="
+          id
+          echo
+          echo "=== groups ==="
+          groups
 
       - name: Start Next.js app in background
         run: |
