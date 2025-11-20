@@ -19,6 +19,7 @@ jobs:
       POLL_INTERVAL: "10"
       TASK_NAME_PREFIX: "GitHub Actions Scan"
       SCAN_CONFIG_ID: ${{ secrets.SCAN_CONFIG_ID }}
+      SCAN_CONFIG_ID: "daba56c8-73ec-11df-a475-002264764cea"
 
     steps:
       - name: Checkout repo

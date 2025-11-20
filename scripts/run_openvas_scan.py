@@ -19,6 +19,7 @@ TASK_NAME_PREFIX = os.environ.get("TASK_NAME_PREFIX", "GitHub Actions Scan")
 
 # ここを追加: 環境変数から Scan Config ID を渡せるようにする
 SCAN_CONFIG_ID = os.environ.get("SCAN_CONFIG_ID")
+SCANNER_ID = os.environ.get("SCANNER_ID")
 
 
 def main():
@@ -101,10 +102,15 @@ def main():
         task_name = f"{TASK_NAME_PREFIX} ({SCAN_TARGETS})"
         print(f"[INFO] Creating task: {task_name!r}")
 
+        if not SCANNER_ID:
+            print("[ERROR] SCANNER_ID is not set. Please set env SCANNER_ID.")
+            sys.exit(1)
+
         task_resp = gmp.create_task(
             name=task_name,
             config_id=config_id,
             target_id=target_id,
+            scanner_id=SCANNER_ID,
         )
         task_id = task_resp.get("id")
         print(f"[INFO] Created task id = {task_id}")
