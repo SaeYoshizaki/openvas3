@@ -40,11 +40,9 @@ jobs:
 
       - name: Start Next.js app in background
         run: |
-          # 本番モードで起動（普通は npm run start でOK）
           npm run start -- --port 3000 &
           echo $! > next.pid
 
-          # 起動待ち（最大 ~60秒）
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3000 > /dev/null; then
               echo "Next.js app is up!"
@@ -58,6 +56,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gvm python3-lxml
+
+      # ★ここを追加
+      - name: Ensure GVM is running
+        run: |
+          if [ ! -S /run/gvmd/gvmd.sock ]; then
+            echo "Starting GVM..."
+            sudo gvm-start || true
+          fi
+
+          for i in {1..30}; do
+            if [ -S /run/gvmd/gvmd.sock ]; then
+              echo "gvmd socket is ready."
+              break
+            fi
+            echo "Waiting for /run/gvmd/gvmd.sock ..."
+            sleep 2
+          done
 
       - name: Run OpenVAS scan
         run: |
