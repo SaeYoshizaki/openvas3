@@ -3,7 +3,7 @@ name: OpenVAS Scan
 on:
   push:
     branches:
-      - main 
+      - main
   workflow_dispatch:
 
 jobs:
@@ -53,11 +53,6 @@ jobs:
             echo "Waiting for Next.js to start..."
             sleep 2
           done
-
-      - name: Install OpenVAS Python deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-gvm python3-lxml
 
       - name: Run OpenVAS scan
         run: |
