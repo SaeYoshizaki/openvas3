@@ -50,7 +50,7 @@ def main():
 
             resp = gmp.create_target(
                 name=target_name,
-                hosts=f"{clean_host}/32",
+                hosts="127.0.0.1",
                 port_list_id=port_list_id,
             )
             target_id = resp.get("id")
