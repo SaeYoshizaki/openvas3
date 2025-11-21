@@ -1,5 +1,6 @@
 name: OpenVAS Scan
 
+# mainブランチにpushされたときにスキャンを実行する
 on:
   push:
     branches:
@@ -22,16 +23,16 @@ jobs:
       SCANNER_ID: ${{ secrets.SCANNER_ID }}
 
     steps:
-      - name: Checkout repo
+      - name: レポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Nodejsをセットアップ
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Install Node dependencies
+      - name: Node関連をインストール
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -39,21 +40,10 @@ jobs:
             npm install
           fi
 
-      - name: Build Next.js app
+      - name: ビルド
         run: npm run build
 
-      - name: Check whoami
-        run: |
-          echo "=== whoami ==="
-          whoami
-          echo
-          echo "=== id ==="
-          id
-          echo
-          echo "=== groups ==="
-          groups
-
-      - name: Start Next.js app in background
+      - name: Next.jsを実行
         run: |
           npm run start -- --hostname 0.0.0.0 --port 3000 &
           echo $! > next.pid
@@ -67,7 +57,7 @@ jobs:
             sleep 2
           done
 
-      - name: Ensure GVM is running (check gvmd socket)
+      - name: GVMが動いているか確認
         run: |
           if [ ! -S "$GMP_SOCKET_PATH" ]; then
             echo "ERROR: GVM socket $GMP_SOCKET_PATH not found."
@@ -75,23 +65,23 @@ jobs:
           fi
           echo "gvmd socket is ready at $GMP_SOCKET_PATH"
 
-      - name: Install OpenVAS Python deps
+      - name: Openvasのpython依存関係をインストール
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gvm python3-lxml
 
-      - name: Run OpenVAS scan
+      - name: OpenVASのスキャンを実行
         run: |
           python3 scripts/run_openvas_scan.py
 
-      - name: Stop Next.js app
+      - name: Next.jsを停止
         if: always()
         run: |
           if [ -f next.pid ]; then
             kill "$(cat next.pid)" || true
           fi
 
-      - name: Upload OpenVAS report
+      - name: レポートをアップロード
         if: always()
         uses: actions/upload-artifact@v4
         with:

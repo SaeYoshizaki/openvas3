@@ -170,18 +170,37 @@ def main() -> None:
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
         # <report> ノードの text に Base64 で PDF 本体が入っている
-        report_nodes = report.xpath("report")
+        # ---------- レポート取得 ----------
+        print("[INFO] Fetching report (PDF)...")
+        report = gmp.get_report(
+            report_id=report_id,
+            details=True,
+            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",  # PDF Report
+        )
+
+        print("[DEBUG] Raw report XML (wrapper):")
+        print(etree.tostring(report, pretty_print=True).decode("utf-8"))
+
+        # ── ここから下を書き換え ─────────────────────────────
+        # XML の中にある <report> 要素を全部見て、Base64 が入っているものを探す
+        report_nodes = report.xpath("//report")
         if not report_nodes:
-            print("[ERROR] <report> node not found in get_report response.")
+            print("[ERROR] No <report> nodes found in get_report response.")
             sys.exit(1)
 
-        b64_data = report_nodes[0].text
+        b64_data = None
+        for node in report_nodes:
+            if node.text and node.text.strip():
+                b64_data = node.text.strip()
+                break
+
         if not b64_data:
             print("[ERROR] <report> node has no text (no Base64 data).")
+            print("[DEBUG] Parsed report tree above.")
             sys.exit(1)
 
         try:
-            pdf_bytes = base64.b64decode(b64_data.strip())
+            pdf_bytes = base64.b64decode(b64_data)
         except Exception as e:
             print(f"[ERROR] Failed to decode report Base64: {e}")
             sys.exit(1)
@@ -192,6 +211,7 @@ def main() -> None:
             f.write(pdf_bytes)
 
         print(f"[INFO] Saved PDF report to: {outfile}")
+        # ───────────────────────────────────────────────
 
 
 if __name__ == "__main__":
