@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import base64
 
 from gvm.connections import UnixSocketConnection
 from gvm.protocols.gmp import GMP
@@ -158,34 +159,39 @@ def main() -> None:
             time.sleep(POLL_INTERVAL)
 
         # ---------- レポート取得 ----------
-        print("[INFO] Fetching report XML...")
+        print("[INFO] Fetching report (PDF)...")
         report = gmp.get_report(
             report_id=report_id,
             details=True,
-            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",
+            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",  # PDF Report
         )
 
-        print("[DEBUG] Raw report XML:")
+        print("[DEBUG] Raw report XML (wrapper):")
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
-        # <report> ノードを探して、そのノード全体を XML として保存する
+        # <report> ノードの text に Base64 で PDF 本体が入っている
         report_nodes = report.xpath("report")
         if not report_nodes:
             print("[ERROR] <report> node not found in get_report response.")
             sys.exit(1)
 
-        xml_string = etree.tostring(
-            report_nodes[0],
-            pretty_print=True,
-            encoding="utf-8",
-        ).decode("utf-8")
+        b64_data = report_nodes[0].text
+        if not b64_data:
+            print("[ERROR] <report> node has no text (no Base64 data).")
+            sys.exit(1)
+
+        try:
+            pdf_bytes = base64.b64decode(b64_data.strip())
+        except Exception as e:
+            print(f"[ERROR] Failed to decode report Base64: {e}")
+            sys.exit(1)
 
         os.makedirs(REPORT_DIR, exist_ok=True)
-        outfile = os.path.join(REPORT_DIR, f"{report_id}.xml")
-        with open(outfile, "w", encoding="utf-8") as f:
-            f.write(xml_string)
+        outfile = os.path.join(REPORT_DIR, f"{report_id}.pdf")
+        with open(outfile, "wb") as f:
+            f.write(pdf_bytes)
 
-        print(f"[INFO] Saved report to: {outfile}")
+        print(f"[INFO] Saved PDF report to: {outfile}")
 
 
 if __name__ == "__main__":
