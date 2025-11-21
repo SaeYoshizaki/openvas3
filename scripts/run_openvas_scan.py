@@ -162,7 +162,7 @@ def main() -> None:
         report = gmp.get_report(
             report_id=report_id,
             details=True,
-            report_format_id="c1645568-627a-11e3-a660-406186ea4fc5",  # Internal XML
+            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",
         )
 
         print("[DEBUG] Raw report XML:")
