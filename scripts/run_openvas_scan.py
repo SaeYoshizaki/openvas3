@@ -2,10 +2,10 @@ import os
 import sys
 import time
 
-from lxml import etree
 from gvm.connections import UnixSocketConnection
 from gvm.protocols.gmp import GMP
 from gvm.transforms import EtreeCheckCommandTransform
+from lxml import etree
 
 
 # ===== 必須環境変数の読み込み =====
