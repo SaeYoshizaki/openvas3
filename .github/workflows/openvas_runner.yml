@@ -1,6 +1,5 @@
 name: OpenVAS Scan
 
-# mainブランチにpushされたときにスキャンを実行する
 on:
   push:
     branches:
@@ -23,16 +22,16 @@ jobs:
       SCANNER_ID: ${{ secrets.SCANNER_ID }}
 
     steps:
-      - name: レポジトリをチェックアウト
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Nodejsをセットアップ
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Node関連をインストール
+      - name: Install Node dependencies
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -40,10 +39,10 @@ jobs:
             npm install
           fi
 
-      - name: ビルド
+      - name: Build Next.js app
         run: npm run build
 
-      - name: Next.jsを実行
+      - name: Start Next.js app in background
         run: |
           npm run start -- --hostname 0.0.0.0 --port 3000 &
           echo $! > next.pid
@@ -57,7 +56,7 @@ jobs:
             sleep 2
           done
 
-      - name: GVMが動いているか確認
+      - name: Ensure GVM is running (check gvmd socket)
         run: |
           if [ ! -S "$GMP_SOCKET_PATH" ]; then
             echo "ERROR: GVM socket $GMP_SOCKET_PATH not found."
@@ -65,23 +64,23 @@ jobs:
           fi
           echo "gvmd socket is ready at $GMP_SOCKET_PATH"
 
-      - name: Openvasのpython依存関係をインストール
+      - name: Install OpenVAS Python deps
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-gvm python3-lxml
 
-      - name: OpenVASのスキャンを実行
+      - name: Run OpenVAS scan
         run: |
           python3 scripts/run_openvas_scan.py
 
-      - name: Next.jsを停止
+      - name: Stop Next.js app
         if: always()
         run: |
           if [ -f next.pid ]; then
             kill "$(cat next.pid)" || true
           fi
 
-      - name: レポートをアップロード
+      - name: Upload OpenVAS report
         if: always()
         uses: actions/upload-artifact@v4
         with:

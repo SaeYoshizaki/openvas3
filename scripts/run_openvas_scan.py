@@ -10,10 +10,9 @@ from lxml import etree
 
 
 def require_env(name: str) -> str:
-    """必須環境変数を取得。なければエラー終了。"""
     value = os.environ.get(name)
     if not value:
-        print(f"[ERROR] Required environment variable {name} is not set.", file=sys.stderr)
+        print(f"環境変数{name}が指定されていません", file=sys.stderr)
         sys.exit(1)
     return value
 
@@ -23,8 +22,6 @@ GMP_PASSWORD = require_env("GMP_PASSWORD")
 SCAN_TARGETS = require_env("SCAN_TARGETS").strip()
 SCAN_CONFIG_ID = require_env("SCAN_CONFIG_ID")
 SCANNER_ID = require_env("SCANNER_ID")
-
-# 任意設定（あれば上書き）
 SOCKET_PATH = os.environ.get("GMP_SOCKET_PATH", "/run/gvmd/gvmd.sock")
 REPORT_DIR = os.environ.get("REPORT_DIR", "openvas_reports")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))
@@ -170,7 +167,7 @@ def main() -> None:
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
         # <report> ノードの text に Base64 で PDF 本体が入っている
-        # ---------- レポート取得 ----------
+                # ---------- レポート取得 ----------
         print("[INFO] Fetching report (PDF)...")
         report = gmp.get_report(
             report_id=report_id,
@@ -181,24 +178,29 @@ def main() -> None:
         print("[DEBUG] Raw report XML (wrapper):")
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
-        # ── ここから下を書き換え ─────────────────────────────
         # XML の中にある <report> 要素を全部見て、Base64 が入っているものを探す
         report_nodes = report.xpath("//report")
+
         if not report_nodes:
             print("[ERROR] No <report> nodes found in get_report response.")
             sys.exit(1)
 
         b64_data = None
         for node in report_nodes:
-            if node.text and node.text.strip():
-                b64_data = node.text.strip()
-                break
+            txt = node.text
+            if txt and txt.strip():
+                # Base64 っぽいか簡易チェック（英数字 + '+/=' だけ & そこそこ長い）
+                candidate = txt.strip()
+                if len(candidate) > 200 and all(c.isalnum() or c in "+/=" for c in candidate):
+                    b64_data = candidate
+                    break
 
         if not b64_data:
-            print("[ERROR] <report> node has no text (no Base64 data).")
+            print("[ERROR] Base64 report not found in any <report> node.")
             print("[DEBUG] Parsed report tree above.")
             sys.exit(1)
 
+        # デコードして保存
         try:
             pdf_bytes = base64.b64decode(b64_data)
         except Exception as e:
@@ -211,7 +213,6 @@ def main() -> None:
             f.write(pdf_bytes)
 
         print(f"[INFO] Saved PDF report to: {outfile}")
-        # ───────────────────────────────────────────────
 
 
 if __name__ == "__main__":
