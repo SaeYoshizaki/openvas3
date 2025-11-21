@@ -155,45 +155,47 @@ def main() -> None:
 
             time.sleep(POLL_INTERVAL)
 
-        # ---------- レポート取得 ----------
+            # ---------- レポート取得 ----------
         print("[INFO] Fetching report (PDF)...")
         report = gmp.get_report(
             report_id=report_id,
             details=True,
-            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",  # PDF Report
+            report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",
         )
 
         print("[DEBUG] Raw report XML (wrapper):")
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
-        # XML の中にある <report> 要素を全部見て、一番長い text を Base64 とみなす
+        # <report> 要素を取得
         report_nodes = report.xpath("//report")
         if not report_nodes:
-            print("[ERROR] No <report> nodes found in get_report response.")
+            print("[ERROR] No <report> nodes found in response.")
             sys.exit(1)
 
-        candidates = []
-        for i, node in enumerate(report_nodes):
-            txt = (node.text or "").strip()
-            candidates.append((len(txt), txt))
+        # 1つ目の report ノードに含まれる全文テキストを取得
+        full_text = "".join(report_nodes[0].itertext()).strip()
+
+        print(f"[DEBUG] Extracted full_text length = {len(full_text)}")
+        print("[DEBUG] full_text sample (first 200 chars):")
+        print(full_text[:200])
+
+        # Base64 っぽい部分を抽出（PDF は "JVBER" で始まる）
+        start_index = full_text.find("JVBER")
+        if start_index == -1:
             print(
-                f"[DEBUG] report[{i}] text length={len(txt)} "
-                f"sample={repr(txt[:80])}"
+                "[ERROR] PDF base64 (starting with 'JVBER') not found in <report> text."
             )
-
-        # 長さ順に並べて、一番長いものを採用
-        candidates.sort(reverse=True, key=lambda x: x[0])
-        b64_data = candidates[0][1] if candidates and candidates[0][0] > 0 else None
-
-        if not b64_data:
-            print("[ERROR] <report> node has no text (no Base64 data).")
-            print("[DEBUG] Parsed report tree above.")
             sys.exit(1)
 
+        # Base64 の終端は '='（パディング）が続くのでそこまで拾う
+        # 緩く行くため全文を取る
+        b64_data = full_text[start_index:].strip()
+
+        # デコード→保存
         try:
             pdf_bytes = base64.b64decode(b64_data)
         except Exception as e:
-            print(f"[ERROR] Failed to decode report Base64: {e}")
+            print(f"[ERROR] Base64 decode failed: {e}")
             sys.exit(1)
 
         os.makedirs(REPORT_DIR, exist_ok=True)
