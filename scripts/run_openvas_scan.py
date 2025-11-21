@@ -115,7 +115,6 @@ def main() -> None:
         # まずは start_task レスポンスから report id を探す
         report_ids = start_resp.xpath(".//report/@id")
 
-        # もし見つからなければ、get_task から last_report をポーリングして拾う
         if not report_ids:
             status = start_resp.get("status")
             status_text = start_resp.get("status_text")
