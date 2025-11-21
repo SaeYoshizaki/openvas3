@@ -8,7 +8,6 @@ from gvm.transforms import EtreeCheckCommandTransform
 from lxml import etree
 
 
-# ===== 必須環境変数の読み込み =====
 def require_env(name: str) -> str:
     """必須環境変数を取得。なければエラー終了。"""
     value = os.environ.get(name)
@@ -110,8 +109,8 @@ def main() -> None:
 
         # ---------- Task 起動 ----------
         start_resp = gmp.start_task(task_id)
-        print("[DEBUG] Raw start_task_response XML:")
-        print(etree.tostring(start_resp, pretty_print=True).decode("utf-8"))
+        print("[DEBUG] Raw start_task_response XML (raw):")
+        print(start_resp)
 
         # まずは start_task レスポンスから report id を探す
         report_ids = start_resp.xpath(".//report/@id")
