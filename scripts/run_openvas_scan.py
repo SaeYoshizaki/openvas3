@@ -74,7 +74,7 @@ def main() -> None:
             print("[INFO] Target not found. Creating new target...")
             resp = gmp.create_target(
                 name=target_name,
-                hosts=SCAN_TARGETS,       # 例: "127.0.0.1"
+                hosts=SCAN_TARGETS,
                 port_list_id=port_list_id,
             )
             target_id = resp.get("id")
@@ -110,7 +110,7 @@ def main() -> None:
         # ---------- Task 起動 ----------
         start_resp = gmp.start_task(task_id)
         print("[DEBUG] Raw start_task_response XML (raw):")
-        print(start_resp)
+        print(etree.tostring(start_resp, pretty_print=True).decode("utf-8"))
 
         # まずは start_task レスポンスから report id を探す
         report_ids = start_resp.xpath(".//report/@id")
@@ -165,30 +165,20 @@ def main() -> None:
             report_format_id="c1645568-627a-11e3-a660-406186ea4fc5",  # Internal XML
         )
 
-        # デバッグ用に生の XML を表示しておく
-        from lxml import etree
         print("[DEBUG] Raw report XML:")
         print(etree.tostring(report, pretty_print=True).decode("utf-8"))
 
-        # 複数ある <report> 要素のうち、
-        # 「実際にテキスト（Base64のXML本体）を持っているもの」を探す
-        xml_string = None
-        for node in report.xpath("//report"):
-            if node.text and node.text.strip():
-                xml_string = node.text
-                break
-
-        if not xml_string:
-            print("[ERROR] Report XML body is empty (no <report> node with text).")
-            print("[DEBUG] Parsed report tree above.")
+        # <report> ノードを探して、そのノード全体を XML として保存する
+        report_nodes = report.xpath("report")
+        if not report_nodes:
+            print("[ERROR] <report> node not found in get_report response.")
             sys.exit(1)
 
-        os.makedirs(REPORT_DIR, exist_ok=True)
-        outfile = os.path.join(REPORT_DIR, f"{report_id}.xml")
-        with open(outfile, "w", encoding="utf-8") as f:
-            f.write(xml_string)
-
-        print(f"[INFO] Saved report to: {outfile}")
+        xml_string = etree.tostring(
+            report_nodes[0],
+            pretty_print=True,
+            encoding="utf-8",
+        ).decode("utf-8")
 
         os.makedirs(REPORT_DIR, exist_ok=True)
         outfile = os.path.join(REPORT_DIR, f"{report_id}.xml")
