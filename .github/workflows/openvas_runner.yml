@@ -13,7 +13,7 @@ jobs:
     env:
       GMP_USER: ${{ secrets.GMP_USER }}
       GMP_PASSWORD: ${{ secrets.GMP_PASSWORD }}
-      SCAN_TARGETS: "localhost"
+      SCAN_TARGETS: "127.0.0.1"
       GMP_SOCKET_PATH: "/run/gvmd/gvmd.sock"
       REPORT_DIR: "openvas_reports"
       POLL_INTERVAL: "10"
