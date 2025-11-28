@@ -4,15 +4,14 @@ import time
 import base64
 
 from gvm.connections import UnixSocketConnection
-from gvm.protocols.gmp import GMP
 from gvm.transforms import EtreeCheckCommandTransform
+from gvm.protocols.gmp import GMP
 from lxml import etree
-
 
 def require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
-        print(f"環境変数{name}が指定されていません", file=sys.stderr)
+        print(f"環境変数{name}が指定されていません")
         sys.exit(1)
     return value
 
@@ -33,84 +32,73 @@ def main() -> None:
     transform = EtreeCheckCommandTransform()
 
     with GMP(connection=connection, transform=transform) as gmp:
-        # ---------- 認証 ----------
         gmp.authenticate(GMP_USER, GMP_PASSWORD)
-        print("[INFO] Authenticated to GVM/GMP")
+        print("GVM/GMPを認証しました")
 
-        # ---------- Port list 取得 ----------
         port_lists = gmp.get_port_lists(filter_string='name="OpenVAS Default"')
         port_list_ids = port_lists.xpath("port_list/@id")
         if not port_list_ids:
-            port_lists = gmp.get_port_lists()
-            port_list_ids = port_lists.xpath("port_list/@id")
+            port_list = gmp.get_port_list()
+            ort_list_ids = port_lists.xpath("port_list/@id")
 
         if not port_list_ids:
-            print("[ERROR] No port lists found in GVM. Aborting.")
+            print("GVM上にポートリストがありません")
             sys.exit(1)
 
         port_list_id = port_list_ids[0]
-        print(f"[INFO] Using port list id = {port_list_id}")
+        print(f"使用するポートリスト：{port_list_id}")
 
-        # ---------- Target 作成/再利用 ----------
         target_name = f"GA Target: {SCAN_TARGETS}"
-        print(f"[INFO] Using target name = {target_name!r}")
+        print(f"使用するターゲット：{target_name!r}")
 
         targets = gmp.get_targets(filter_string=f'name="{target_name}"')
         target_id = None
-        for t in targets.xpath("target"):
-            target_id = t.get("id")
+        for i in targets.xpath("target"):
+            target_id = i.get("id")
 
         if target_id:
-            print(f"[INFO] Reusing existing target id = {target_id}")
+            print(f"ターゲット：{target_id}")
         else:
-            print("[INFO] Target not found. Creating new target...")
-            resp = gmp.create_target(
+            print("ターゲットがありません。新しいターゲットを作成します。")
+            response = gmp.create_target(
                 name=target_name,
                 hosts=SCAN_TARGETS,
                 port_list_id=port_list_id,
             )
-            target_id = resp.get("id")
+            target_id = response.get("id")
             if not target_id:
-                print("[ERROR] Failed to create target (no id in response).")
+                print(f"ターゲットIDを作るのに失敗しました")
                 sys.exit(1)
-            print(f"[INFO] Created target id = {target_id}")
+            print(f"ターゲットID : {target_id}")
 
-        # ---------- Scan Config は env の ID をそのまま使う ----------
         config_id = SCAN_CONFIG_ID
-        print(f"[INFO] Using scan config id = {config_id}")
+        print(f"使用するScan config : {config_id}")
 
-        # ---------- Task 作成 ----------
         task_name = f"{TASK_NAME_PREFIX} ({SCAN_TARGETS})"
-        print(f"[INFO] Creating task: {task_name!r}")
+        print(f"作成したタスク：{task_name!r}")
 
         task_resp = gmp.create_task(
-            name=task_name,
+            nams=task_name,
             config_id=config_id,
             target_id=target_id,
             scanner_id=SCANNER_ID,
         )
         task_id = task_resp.get("id")
         if not task_id:
-            print("[ERROR] Failed to create task (no id in response).")
+            print("タスクの作成を失敗しました")
             sys.exit(1)
-        print(f"[INFO] Created task id = {task_id}")
+        print(f"タスクID : {task_id}")
 
-        # ---------- Task 起動 ----------
         start_resp = gmp.start_task(task_id)
 
-        # まずは start_task レスポンスから report id を探す
         report_ids = start_resp.xpath(".//report/@id")
 
         if not report_ids:
             status = start_resp.get("status")
             status_text = start_resp.get("status_text")
             print(
-                f"[WARN] start_task response has no report id "
-                f"(status={status}, status_text={status_text})."
+                f"レポートIDがありません。　status : {status}, status_text : {status_text}"
             )
-            print("[INFO] Trying to get report id from get_task() ...")
-
-            # report が紐づくまで少し待つ
             while True:
                 task = gmp.get_task(task_id=task_id)
                 status = task.xpath("task/status/text()")[0]
@@ -118,10 +106,9 @@ def main() -> None:
 
                 if report_ids:
                     break
-
-                print(f"[INFO] レポートIDを待機中... 現在のステータス = {status}")
+                print(f"[INFO] レポートIDを待機中")
                 if status in ("Stopped", "Interrupted"):
-                    print("[ERROR] レポート作成前にタスクが停止しました。")
+                    print("レポート作成前にタスクが停止しました。")
                     print("[DEBUG] タスクの生XML:")
                     print(etree.tostring(task, pretty_print=True).decode("utf-8"))
                     sys.exit(1)
@@ -129,54 +116,45 @@ def main() -> None:
                 time.sleep(POLL_INTERVAL)
 
         report_id = report_ids[0]
-        print(f"[INFO] Task started. Report id = {report_id}")
+        print(f"タスクスタート　Report id : {report_id}")
 
-        # ---------- 進捗ポーリング ----------
         while True:
             task = gmp.get_task(task_id=task_id)
             status = task.xpath("task/status/text()")[0]
             progress = task.xpath("task/progress/text()")[0]
-            print(f"[INFO] Status: {status}, progress: {progress}%")
+            print(f"Status: {status}, progress: {progress}%")
 
             if status in ("Done", "Stopped", "Interrupted"):
                 break
 
             time.sleep(POLL_INTERVAL)
 
-            # ---------- レポート取得 ----------
-        print("[INFO] Fetching report (PDF)...")
+        print("レポートを取得")
         report = gmp.get_report(
             report_id=report_id,
             details=True,
             report_format_id="c402cc3e-b531-11e1-9163-406186ea4fc5",
         )
-
-        # <report> 要素を取得
         report_nodes = report.xpath("//report")
         if not report_nodes:
-            print("[ERROR] No <report> nodes found in response.")
+            print("レポートが見つかりません")
             sys.exit(1)
 
-        # 1つ目の report ノードに含まれる全文テキストを取得
         full_text = "".join(report_nodes[0].itertext()).strip()
 
-        # Base64 っぽい部分を抽出（PDF は "JVBER" で始まる）
         start_index = full_text.find("JVBER")
         if start_index == -1:
             print(
-                "[ERROR] PDF base64 (starting with 'JVBER') not found in <report> text."
+                "レポートにbase64データが見つかりません"
             )
             sys.exit(1)
 
-        # Base64 の終端は '='（パディング）が続くのでそこまで拾う
-        # 緩く行くため全文を取る
         b64_data = full_text[start_index:].strip()
 
-        # デコード→保存
         try:
             pdf_bytes = base64.b64decode(b64_data)
         except Exception as e:
-            print(f"[ERROR] Base64 decode failed: {e}")
+            print(f"デコードに失敗しました{e}")
             sys.exit(1)
 
         os.makedirs(REPORT_DIR, exist_ok=True)
@@ -184,7 +162,7 @@ def main() -> None:
         with open(outfile, "wb") as f:
             f.write(pdf_bytes)
 
-        print(f"[INFO] Saved PDF report to: {outfile}")
+        print(f"PDFを保存しました：{outfile}")
 
 
 if __name__ == "__main__":
