@@ -38,8 +38,8 @@ def main() -> None:
         port_lists = gmp.get_port_lists(filter_string='name="OpenVAS Default"')
         port_list_ids = port_lists.xpath("port_list/@id")
         if not port_list_ids:
-            port_list = gmp.get_port_list()
-            ort_list_ids = port_lists.xpath("port_list/@id")
+            port_lists = gmp.get_port_lists()
+            port_list_ids = port_lists.xpath("port_list/@id")
 
         if not port_list_ids:
             print("GVM上にポートリストがありません")
@@ -78,7 +78,7 @@ def main() -> None:
         print(f"作成したタスク：{task_name!r}")
 
         task_resp = gmp.create_task(
-            nams=task_name,
+            name=task_name,
             config_id=config_id,
             target_id=target_id,
             scanner_id=SCANNER_ID,
